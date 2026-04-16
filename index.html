@@ -18,21 +18,25 @@
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
         h2 { margin: 0 0 10px 0; font-size: 1.1rem; color: var(--primary); }
         
-        /* Scanner Window */
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 10px; }
         
-        .info-box { background: #e8f5e9; padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 5px solid var(--primary); }
-        .label-text { font-size: 0.8rem; color: #666; text-transform: uppercase; font-weight: bold; }
-        .value-text { display: block; font-size: 1.1rem; font-weight: bold; min-height: 1.2em; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .info-box { background: #e8f5e9; padding: 10px; border-radius: 8px; border-left: 4px solid var(--primary); }
+        .label-text { font-size: 0.7rem; color: #666; text-transform: uppercase; font-weight: bold; }
+        .value-text { display: block; font-size: 1rem; font-weight: bold; min-height: 1.2em; word-break: break-all; }
 
         label { display: block; margin: 10px 0 5px; font-weight: 600; }
-        input { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        input[type="number"] { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
         
+        /* Checkbox Styling */
+        .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .check-item { display: flex; align-items: center; background: #f9f9f9; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+        .check-item input { width: 20px; height: 20px; margin-right: 10px; accent-color: var(--primary); }
+        .check-item label { margin: 0; font-size: 0.9rem; cursor: pointer; }
+
         button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
-        button:active { opacity: 0.7; }
-        
         .btn-scan { background: #333; color: white; margin-bottom: 10px; }
-        .btn-save { background: var(--primary); color: white; margin-top: 10px; }
+        .btn-save { background: var(--primary); color: white; margin-top: 15px; }
         .btn-sync { background: var(--secondary); color: white; margin-top: 20px; }
         
         .status-footer { text-align: center; font-size: 0.8rem; color: #777; margin-top: 15px; }
@@ -49,9 +53,15 @@
 
     <div class="card">
         <h2>2. Tree Details</h2>
-        <div class="info-box">
-            <span class="label-text">Unique Tree ID</span>
-            <span id="displayUid" class="value-text">Not Scanned</span>
+        <div class="info-grid">
+            <div class="info-box">
+                <span class="label-text">Tree ID</span>
+                <span id="displayUid" class="value-text">---</span>
+            </div>
+            <div class="info-box">
+                <span class="label-text">Species</span>
+                <span id="displaySpecies" class="value-text">---</span>
+            </div>
         </div>
 
         <label>Height (M)</label>
@@ -60,60 +70,69 @@
         <label>Girth (CM)</label>
         <input type="number" id="girth" inputmode="decimal" placeholder="00.0">
 
+        <label>Observations</label>
+        <div class="checkbox-group">
+            <div class="check-item"><input type="checkbox" id="flowering"><label for="flowering">Flowering</label></div>
+            <div class="check-item"><input type="checkbox" id="fruiting"><label for="fruiting">Fruiting</label></div>
+            <div class="check-item"><input type="checkbox" id="disease"><label for="disease">Disease</label></div>
+            <div class="check-item"><input type="checkbox" id="forking"><label for="forking">Forking</label></div>
+            <div class="check-item"><input type="checkbox" id="buttress" style="grid-column: span 2;"><label for="buttress">Buttress</label></div>
+        </div>
+
         <button class="btn-save" onclick="saveToPhone()">SAVE TO PHONE (OFFLINE)</button>
     </div>
 
     <div class="card" style="border-top: 4px solid var(--secondary);">
-        <div class="status-footer">
-            Pending Sync: <span id="count" class="badge">0</span>
-        </div>
+        <div class="status-footer">Pending Sync: <span id="count" class="badge">0</span></div>
         <button class="btn-sync" onclick="syncToGoogle()">SYNC TO GOOGLE SHEETS</button>
     </div>
 
     <script>
         let html5QrCode;
         let currentUid = "";
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby6Wq08OfuYrZ2kWdT7iwSflwUvfgzjucEQSnzjd-R0l7r9qUFzWfT_39CSN4jPrhkg/exec"; // REPLACE THIS!
+        let currentSpecies = "";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby6Wq08OfuYrZ2kWdT7iwSflwUvfgzjucEQSnzjd-R0l7r9qUFzWfT_39CSN4jPrhkg/exec"; 
 
-        // --- SCANNER LOGIC ---
         function toggleScanner() {
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader");
-            }
-
+            if (!html5QrCode) { html5QrCode = new Html5Qrcode("reader"); }
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
             
             html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-                // Handle both URL-based QR and plain text QR
                 try {
                     const url = new URL(decodedText);
-                    currentUid = url.searchParams.get("uid") || decodedText;
+                    currentUid = url.searchParams.get("uid") || "Unknown";
+                    currentSpecies = url.searchParams.get("sp") || "Not Specified";
                 } catch(e) {
                     currentUid = decodedText;
+                    currentSpecies = "Unknown";
                 }
 
-                document.getElementById('displayUid').innerText = currentUid.replace(/_/g, " ");
-                html5QrCode.stop(); // Stop camera to save battery
-                alert("Scanned Successfully!");
-            }).catch(err => {
-                alert("Camera Error: " + err);
-            });
+                document.getElementById('displayUid').innerText = currentUid;
+                document.getElementById('displaySpecies').innerText = currentSpecies;
+                html5QrCode.stop();
+                alert("Scanned: " + currentUid);
+            }).catch(err => { alert("Camera Error: " + err); });
         }
 
-        // --- OFFLINE STORAGE ---
         function saveToPhone() {
             const h = document.getElementById('height').value;
             const g = document.getElementById('girth').value;
 
             if (!currentUid || !h || !g) {
-                alert("Please scan tree and enter both measurements!");
+                alert("Please scan tree and enter height/girth!");
                 return;
             }
 
             const record = {
                 uid: currentUid,
+                species: currentSpecies,
                 height: h,
                 girth: g,
+                flowering: document.getElementById('flowering').checked,
+                fruiting: document.getElementById('fruiting').checked,
+                disease: document.getElementById('disease').checked,
+                forking: document.getElementById('forking').checked,
+                buttress: document.getElementById('buttress').checked,
                 time: new Date().toLocaleString()
             };
 
@@ -121,12 +140,14 @@
             storage.push(record);
             localStorage.setItem('treeData', JSON.stringify(storage));
 
-            // UI Reset
-            alert("Saved locally! Ready for next tree.");
-            document.getElementById('height').value = "";
-            document.getElementById('girth').value = "";
-            document.getElementById('displayUid').innerText = "Not Scanned";
-            currentUid = "";
+            // Reset UI
+            alert("Record Saved Locally!");
+            ["height", "girth"].forEach(id => document.getElementById(id).value = "");
+            ["flowering", "fruiting", "disease", "forking", "buttress"].forEach(id => document.getElementById(id).checked = false);
+            document.getElementById('displayUid').innerText = "---";
+            document.getElementById('displaySpecies').innerText = "---";
+            currentUid = ""; 
+            currentSpecies = "";
             updateCount();
         }
 
@@ -135,39 +156,26 @@
             document.getElementById('count').innerText = storage.length;
         }
 
-        // --- SYNC TO GOOGLE ---
         async function syncToGoogle() {
             const storage = JSON.parse(localStorage.getItem('treeData') || "[]");
             if (storage.length === 0) { alert("No data to sync."); return; }
-            if (SCRIPT_URL.includes("YOUR_GOOGLE")) { alert("Error: App Script URL not set!"); return; }
-
             if (!confirm(`Sync ${storage.length} records now?`)) return;
 
             try {
-                // Send as plain text to bypass CORS issues with Apps Script
                 await fetch(SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
                     body: JSON.stringify(storage)
                 });
-
-                alert("Sync Successful! Local memory cleared.");
+                alert("Sync Successful!");
                 localStorage.setItem('treeData', "[]");
                 updateCount();
-            } catch (e) {
-                alert("Sync failed. Check internet connection.");
-            }
+            } catch (e) { alert("Sync failed. Check connection."); }
         }
 
-        // --- SERVICE WORKER REGISTRATION ---
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(() => console.log('Offline Engine Active'));
-            });
+            window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js'); });
         }
-
-        // Initial check
         updateCount();
     </script>
 </body>
