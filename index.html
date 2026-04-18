@@ -89,15 +89,15 @@
         <label>Girth (Centimeters)</label>
         <input type="number" id="girth" inputmode="decimal" placeholder="00.0">
 
-    <label>Observations</label>
-<div class="checkbox-group">
-    <div class="check-item"><input type="checkbox" id="flowering"><label for="flowering">Flowering</label></div>
-    <div class="check-item"><input type="checkbox" id="fruiting"><label for="fruiting">Fruiting</label></div>
-    <div class="check-item"><input type="checkbox" id="termites"><label for="termites">Termites Present</label></div>
-    <div class="check-item"><input type="checkbox" id="disease"><label for="disease">Disease</label></div>
-    <div class="check-item"><input type="checkbox" id="forking"><label for="forking">Forking</label></div>
-    <div class="check-item"><input type="checkbox" id="buttress"><label for="buttress">Buttress</label></div>
-</div>
+        <label>Observations</label>
+        <div class="checkbox-group">
+            <div class="check-item"><input type="checkbox" id="flowering"><label for="flowering">Flowering</label></div>
+            <div class="check-item"><input type="checkbox" id="fruiting"><label for="fruiting">Fruiting</label></div>
+            <div class="check-item"><input type="checkbox" id="termites"><label for="termites">Termites</label></div>
+            <div class="check-item"><input type="checkbox" id="disease"><label for="disease">Disease</label></div>
+            <div class="check-item"><input type="checkbox" id="forking"><label for="forking">Forking</label></div>
+            <div class="check-item"><input type="checkbox" id="buttress"><label for="buttress">Buttress</label></div>
+        </div>
 
         <button class="btn-save" onclick="saveToPhone()">SAVE LOCALLY</button>
     </div>
@@ -113,106 +113,131 @@
         let html5QrCode;
         let currentUid = "";
         let currentSpecies = "";
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby6Wq08OfuYrZ2kWdT7iwSflwUvfgzjucEQSnzjd-R0l7r9qUFzWfT_39CSN4jPrhkg/exec"; 
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby6Wq08OfuYrZ2kWdT7iwSflwUvfgzjucEQSnzjd-R0l7r9qUFzWfT_39CSN4jPrhkg/exec";
 
-        function toggleScanner() {
-            if (!html5QrCode) { html5QrCode = new Html5Qrcode("reader"); }
-            const config = { fps: 15, qrbox: { width: 250, height: 250 } };
+        // --- NEW: AUTO-PRELOAD DATA FROM URL ON LOAD ---
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlUid = urlParams.get('uid'); // Captures data if redirected from phone camera [cite: 40]
             
-            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-                try {
-                    let rawId = decodedText;
-                    if (decodedText.includes('uid=')) {
-                        const url = new URL(decodedText);
-                        rawId = url.searchParams.get("uid");
-                    }
-                    currentUid = rawId;
+            if (urlUid) {
+                processScannedId(urlUid);
+                // Cleans address bar to prevent re-fill on refresh
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            updateCount();
+        };
 
-                    // SPLIT BY UNDERSCORE: Range_Plot_Block_Species_CPT_TreeNo
-                    const parts = currentUid.split('_');
-                    
-                    document.getElementById('valRange').innerText = parts[0] || "-";
-                    document.getElementById('valPlot').innerText  = parts[1] || "-";
-                    document.getElementById('valBlock').innerText = parts[2] || "-";
-                    document.getElementById('displaySpecies').innerText = parts[3] || "Unknown";
-                    document.getElementById('valCpt').innerText   = parts[4] || "-";
-                    document.getElementById('valTreeNo').innerText = parts[5] || "-";
-                    
-                    currentSpecies = parts[3] || "Unknown";
-                    
-                    html5QrCode.stop();
-                    alert("Scanned Tree No: " + (parts[5] || "Detected"));
-                } catch(e) {
-                    alert("Parsing Error. Ensure QR format is Range_Plot_Block_Species_CPT_TreeNo");
+        // --- CORE PARSING LOGIC (Shared by Manual & Auto-Redirect) ---
+        function processScannedId(decodedText) {
+            try {
+                let rawId = decodedText;
+                // If the QR is a URL, extract the 'uid' parameter [cite: 39, 40]
+                if (decodedText.includes('uid=')) {
+                    const url = new URL(decodedText);
+                    rawId = url.searchParams.get("uid");
                 }
-            }).catch(err => { alert("Camera Error: Please check permissions."); });
+                
+                currentUid = rawId;
+                const parts = currentUid.split('_'); // Format: Range_Plot_Block_Species_CPT_TreeNo [cite: 41]
+                
+                // Update UI Identification Section [cite: 30, 41, 42, 43]
+                document.getElementById('valRange').innerText = parts[0] || "-";
+                document.getElementById('valPlot').innerText  = parts[1] || "-";
+                document.getElementById('valBlock').innerText = parts[2] || "-";
+                document.getElementById('displaySpecies').innerText = parts[3] || "Unknown";
+                document.getElementById('valCpt').innerText   = parts[4] || "-";
+                document.getElementById('valTreeNo').innerText = parts[5] || "-";
+                
+                currentSpecies = parts[3] || "Unknown";
+                
+                // Alert confirmation [cite: 43]
+                if (parts[5]) alert("Scanned Tree No: " + parts[5]);
+
+            } catch(e) {
+                alert("Parsing Error. Ensure QR format is Range_Plot_Block_Species_CPT_TreeNo"); 
+            }
         }
 
-       function saveToPhone() {
-    const h = document.getElementById('height').value;
-    const g = document.getElementById('girth').value;
+        // --- MANUAL SCANNER CONTROL ---
+        function toggleScanner() {
+            if (!html5QrCode) { html5QrCode = new Html5Qrcode("reader"); } 
+            const config = { fps: 15, qrbox: { width: 250, height: 250 } }; 
+            
+            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+                processScannedId(decodedText);
+                html5QrCode.stop(); 
+            }).catch(err => { alert("Camera Error: Please check permissions."); }); 
+        }
 
-    if (!currentUid || !h || !g) {
-        alert("Please scan a tree and enter measurements first.");
-        return;
-    }
+        function saveToPhone() {
+            const h = document.getElementById('height').value; 
+            const g = document.getElementById('girth').value; 
 
-    const record = {
-        uid: currentUid,
-        species: currentSpecies,
-        height: h,
-        girth: g,
-        flowering: document.getElementById('flowering').checked,
-        fruiting: document.getElementById('fruiting').checked,
-        termites: document.getElementById('termites').checked, // New Field
-        disease: document.getElementById('disease').checked,
-        forking: document.getElementById('forking').checked,
-        buttress: document.getElementById('buttress').checked,
-        time: new Date().toLocaleString()
-    };
+            if (!currentUid || !h || !g) {
+                alert("Please scan a tree and enter measurements first."); 
+                return;
+            }
 
-    let storage = JSON.parse(localStorage.getItem('treeData') || "[]");
-    storage.push(record);
-    localStorage.setItem('treeData', JSON.stringify(storage));
+            const record = {
+                uid: currentUid,
+                species: currentSpecies,
+                height: h,
+                girth: g,
+                flowering: document.getElementById('flowering').checked, 
+                fruiting: document.getElementById('fruiting').checked,
+                termites: document.getElementById('termites').checked,
+                disease: document.getElementById('disease').checked,
+                forking: document.getElementById('forking').checked,
+                buttress: document.getElementById('buttress').checked,
+                time: new Date().toLocaleString()
+            };
 
-    alert("Saved! Record stored in phone memory.");
-    
-    // UI Reset for next scan
-    ["height", "girth"].forEach(id => document.getElementById(id).value = "");
-    ["flowering", "fruiting", "termites", "disease", "forking", "buttress"].forEach(id => document.getElementById(id).checked = false);
-    ["displaySpecies", "valRange", "valPlot", "valBlock", "valTreeNo", "valCpt"].forEach(id => document.getElementById(id).innerText = "-");
-    currentUid = ""; 
-    updateCount();
-}
+            let storage = JSON.parse(localStorage.getItem('treeData') || "[]"); 
+            storage.push(record);
+            localStorage.setItem('treeData', JSON.stringify(storage)); 
+
+            alert("Saved locally!");
+            resetForm();
+        }
+
+        function resetForm() {
+            // UI Reset for next scan [cite: 51, 52]
+            ["height", "girth"].forEach(id => document.getElementById(id).value = "");
+            ["flowering", "fruiting", "termites", "disease", "forking", "buttress"].forEach(id => document.getElementById(id).checked = false);
+            ["displaySpecies", "valRange", "valPlot", "valBlock", "valTreeNo", "valCpt"].forEach(id => document.getElementById(id).innerText = "-");
+            currentUid = ""; 
+            updateCount();
+        }
 
         function updateCount() {
-            const storage = JSON.parse(localStorage.getItem('treeData') || "[]");
-            document.getElementById('count').innerText = storage.length;
+            const storage = JSON.parse(localStorage.getItem('treeData') || "[]"); 
+            document.getElementById('count').innerText = storage.length; 
         }
 
         async function syncToGoogle() {
-            const storage = JSON.parse(localStorage.getItem('treeData') || "[]");
-            if (storage.length === 0) { alert("Nothing to sync."); return; }
-            if (!confirm(`Sync ${storage.length} records?`)) return;
+            const storage = JSON.parse(localStorage.getItem('treeData') || "[]"); 
+            if (storage.length === 0) { alert("Nothing to sync."); return; } 
+            if (!confirm(`Sync ${storage.length} records?`)) return; 
 
             try {
                 await fetch(SCRIPT_URL, { 
                     method: 'POST', 
                     mode: 'no-cors', 
                     body: JSON.stringify(storage) 
-                });
-                alert("Upload Successful! Phone memory cleared.");
+                }); 
+                alert("Upload Successful! Phone memory cleared."); 
                 localStorage.setItem('treeData', "[]");
                 updateCount();
             } catch (e) {
-                alert("Upload failed. Check your internet connection.");
+                alert("Upload failed. Check your internet connection."); 
             }
         }
 
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js'); });
+            window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js'); }); 
         }
-        updateCount();
+        updateCount(); 
     </script>
 </body>
 </html>
